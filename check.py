@@ -90,43 +90,32 @@ hogify = HogTransformer(
     orientations=9,
     block_norm='L2-Hys'
 )
+scalify = StandardScaler()
 
-X_train_gray = grayify.transform(X_train)
-X_train_hog = hogify.transform(X_train_gray)
-print(X_train_hog[0].shape)
+param_grid = {
+    'classifier__alpha': [0.0001, 0.001, 0.01, 0.1],
+    'classifier__learning_rate': ['optimal', 'constant', 'invscaling'],
+    'classifier__eta0': [0.01, 0.1, 1.0],
+}
 
-X_test_gray = grayify.transform(X_test)
-X_test_hog = hogify.transform(X_test_gray)
+sgd_clf = SGDClassifier(random_state=42, max_iter=1000, tol=1e-3)
+
+pipeline = Pipeline([
+    ('grayify', RGB2GrayTransformer()),
+    ('hogify', hogify),
+    ('scalify', StandardScaler()),
+    ('classifier', sgd_clf),
+])
 
 
-label_encoder = LabelEncoder()
-y_train_encoded = label_encoder.fit_transform(y_train)
-y_test_encoded = label_encoder.transform(y_test)
 
-model = Sequential()
-model.add(Conv1D(16, 3, 1, activation='relu', input_shape=(10404,1)))
-model.add(MaxPooling1D())
-model.add(Conv1D(32, 3, 1, activation='relu'))
-model.add(MaxPooling1D())
-model.add(Conv1D(16, 3, 1, activation='relu'))
-model.add(MaxPooling1D())
-model.add(Flatten())
-model.add(Dense(256, activation='relu'))
-model.add(Dense(1, activation='sigmoid'))
-model.compile('adam', loss=tf.losses.BinaryCrossentropy(), metrics=['accuracy'])
+grid_search = GridSearchCV(pipeline, param_grid, cv=5, scoring='accuracy', verbose=1)
 
-hist = model.fit(x=X_train_hog, y=y_train_encoded, epochs=20, validation_data=(X_test_hog, y_test_encoded))
+grid_search.fit(X_train, y_train)
 
-fig = plt.figure()
-plt.plot(hist.history['loss'], color='teal', label='loss')
-plt.plot(hist.history['val_loss'], color='orange', label='val_loss')
-fig.suptitle('Loss', fontsize=20)
-plt.legend(loc="upper left")
-plt.show()
+best_model = grid_search.best_estimator_
 
-fig = plt.figure()
-plt.plot(hist.history['accuracy'], color='teal', label='accuracy')
-plt.plot(hist.history['val_accuracy'], color='orange', label='val_accuracy')
-fig.suptitle('Accuracy', fontsize=20)
-plt.legend(loc="upper left")
-plt.show()
+y_pred = best_model.predict(X_test)
+
+accuracy = accuracy_score(y_test, y_pred)
+print('Percentage correct: ', 100 * accuracy)

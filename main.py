@@ -11,6 +11,7 @@ from skimage.transform import resize
 from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score
+from transformation import *
 
 def split_name(imageName):
     type = ""
@@ -99,12 +100,31 @@ sgd_clf = SGDClassifier(random_state=42, max_iter=1000, tol=1e-3)
 pipeline = Pipeline([
     ('grayify', RGB2GrayTransformer()),
     ('hogify', HogTransformer(pixels_per_cell=(14, 14), cells_per_block=(2, 2), orientations=9, block_norm='L2-Hys')),
-    ('scalify', StandardScaler()),
     ('classifier', sgd_clf),
 ])
 
+pipeline1 = Pipeline([
+    ('flatten', ImageFlattener()),
+    ('scalify', StandardScaler()),
+    ('gabor_features', GaborFeatureExtractor()),
+    ('classifier', sgd_clf),
+])
+
+
+param_grid1 = {
+    'gabor_features__orientations': [8, 12],
+    'gabor_features__scales': [[0.1, 0.5, 1, 2], [0.2, 0.6, 1.5, 3]],
+    'classifier__alpha': [1, 10, 100]
+}
+
+param_grid2 = {
+    'gabor_features__orientations': [8],
+    'gabor_features__scales': [[0.1, 0.5, 1, 2]],
+    'classifier__alpha': [1]
+}
+
 # Set up GridSearchCV
-grid_search = GridSearchCV(pipeline, param_grid, cv=5, scoring='accuracy', verbose=1)
+grid_search = GridSearchCV(pipeline1, param_grid2, cv=5, scoring='accuracy', verbose=1)
 
 
 grid_search.fit(X_train, y_train)

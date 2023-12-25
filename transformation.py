@@ -7,6 +7,8 @@ from skimage.feature import canny
 from skimage.transform import rescale
 from skimage.filters import gaussian
 from skimage.segmentation import slic
+from skimage.filters import gabor
+from scipy import ndimage as ndi
 
 
 class Scale(BaseEstimator, TransformerMixin):
@@ -116,3 +118,52 @@ class ImageSegmentation(BaseEstimator, TransformerMixin):
     def transform(self, X, y=None):
         segmented_images = [slic(img, compactness=10, n_segments=100) for img in X]
         return np.array(segmented_images)
+
+
+def extract_gabor_features(image, kernels):
+    features = []
+    for kernel in kernels:
+        filtered_image = ndi.convolve(image, kernel, mode='wrap')
+        features.append(np.mean(filtered_image))
+        features.append(np.var(filtered_image))
+    return features
+
+
+class GaborFeatureExtractor(BaseEstimator, TransformerMixin):
+    def __init__(self, orientations=8, scales=[0.1, 0.5, 1, 2]):
+        self.orientations = orientations
+        self.scales = scales
+        self.kernels = self._generate_gabor_kernels()
+
+    def _generate_gabor_kernels(self):
+        return [
+            (gabor(frequency=0.6, theta=theta, sigma_x=sigma, sigma_y=sigma), theta, sigma)
+            for theta in np.linspace(0, np.pi, self.orientations, endpoint=False)
+            for sigma in self.scales
+        ]
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        gabor_features = [self._apply_gabor_filters(img) for img in X]
+        return np.array(gabor_features)
+
+    def _apply_gabor_filters(self, img):
+        return [self._compute_gabor_response(img, kernel, theta, sigma) for kernel, theta, sigma in self.kernels]
+
+    def _compute_gabor_response(self, img, kernel, theta, sigma):
+        # Apply Gabor filter to the image
+        filtered_img = gabor(img, frequency=0.6, theta=theta, sigma_x=sigma, sigma_y=sigma, mode='wrap')
+        # Compute magnitude of response
+        response_magnitude = np.sqrt(filtered_img.real**2 + filtered_img.imag**2)
+        return response_magnitude
+
+
+class ImageFlattener(BaseEstimator, TransformerMixin):
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        # Flatten each image in the dataset
+        return np.array([image.flatten() for image in X])
